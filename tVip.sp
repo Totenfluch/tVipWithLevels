@@ -31,9 +31,9 @@ bool g_bIsVip[MAXPLAYERS + 1];
 
 public Plugin myinfo = 
 {
-	name = "tVIP", 
+	name = "tVIP (Rowdy Edit)", 
 	author = PLUGIN_AUTHOR, 
-	description = "VIP functionality for the GGC", 
+	description = "VIP functionality with levels", 
 	version = PLUGIN_VERSION, 
 	url = "https://totenfluch.de"
 };
@@ -53,16 +53,17 @@ public void OnPluginStart() {
   		`enddate` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00', \
   		`admin_playername` varchar(36) COLLATE utf8_bin NOT NULL, \
   		`admin_playerid` varchar(20) COLLATE utf8_bin NOT NULL, \
+  		`vip_level` INT NOT NULL, \
  		 PRIMARY KEY (`Id`), \
   		 UNIQUE KEY `playerid` (`playerid`)  \
   		 ) ENGINE = InnoDB AUTO_INCREMENT=0 DEFAULT CHARSET=utf8 COLLATE=utf8_bin;"
 		);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, createTableQuery);
 	
-	AutoExecConfig_SetFile("tVip");
+	AutoExecConfig_SetFile("tVip_rowdy");
 	AutoExecConfig_SetCreateFile(true);
 	
-	g_hFlag = AutoExecConfig_CreateConVar("tVip_flag", "19", "20=Custom6, 19=Custom5 etc. Numeric Flag See: 'https://wiki.alliedmods.net/Checking_Admin_Flags_(SourceMod_Scripting)' for Definitions ---- Multiple flags seperated with Space: '16 17 18 19' !!");
+	g_hFlag = AutoExecConfig_CreateConVar("tVip_flag", "0 15 18", "0=A, 15=O, 18=R etc. Numeric Flag See: 'https://wiki.alliedmods.net/Checking_Admin_Flags_(SourceMod_Scripting)' for Definitions ---- Level 1: Number1, Level 2: Number2, Level3: Number3");
 	g_hTestVipDuration = AutoExecConfig_CreateConVar("tVip_testVipDuration", "15", "Test Vip duration in minutes");
 	
 	AutoExecConfig_CleanFile();
@@ -101,7 +102,7 @@ public Action openVipPanel(int client, int args) {
 			strcopy(playerid, sizeof(playerid), playerid[8]);
 		
 		char getDatesQuery[1024];
-		Format(getDatesQuery, sizeof(getDatesQuery), "SELECT timestamp,enddate,DATEDIFF(enddate, NOW()) as timeleft FROM tVip WHERE playerid = '%s';", playerid);
+		Format(getDatesQuery, sizeof(getDatesQuery), "SELECT timestamp,enddate,DATEDIFF(enddate, NOW()) as timeleft,level FROM tVip WHERE playerid = '%s';", playerid);
 		
 		SQL_TQuery(g_DB, getDatesQueryCallback, getDatesQuery, client);
 	}
@@ -114,20 +115,25 @@ public void getDatesQueryCallback(Handle owner, Handle hndl, const char[] error,
 	char ends[128];
 	char started[128];
 	char left[64];
+	int level;
 	while (SQL_FetchRow(hndl)) {
 		SQL_FetchString(hndl, 0, started, sizeof(started));
 		SQL_FetchString(hndl, 1, ends, sizeof(ends));
 		SQL_FetchString(hndl, 2, left, sizeof(left));
+		level = SQL_FetchInt(hndl, 3);
 	}
 	
 	Menu VipPanelMenu = CreateMenu(VipPanelMenuHandler);
 	char m_started[256];
 	char m_ends[256];
+	char m_level[256];
 	Format(m_started, sizeof(m_started), "Started: %s", started);
 	Format(m_ends, sizeof(m_ends), "Ends: %s (%s Days)", ends, left);
+	Format(m_level, sizeof(m_level), "Level: %i", level);
 	SetMenuTitle(VipPanelMenu, "VIP Panel");
 	AddMenuItem(VipPanelMenu, "x", m_started, ITEMDRAW_DISABLED);
 	AddMenuItem(VipPanelMenu, "x", m_ends, ITEMDRAW_DISABLED);
+	AddMenuItem(VipPanelMenu, "x", m_level, ITEMDRAW_DISABLED);
 	DisplayMenu(VipPanelMenu, client, 60);
 }
 
@@ -251,14 +257,14 @@ public void showDurationSelect(int client, int reason) {
 	Menu selectDuration = CreateMenu(selectDurationHandler);
 	SetMenuTitle(selectDuration, "Select the Duration");
 	AddMenuItem(selectDuration, "testVip", "Test Vip");
-	AddMenuItem(selectDuration, "1", "1 Month");
-	AddMenuItem(selectDuration, "2", "2 Month");
-	AddMenuItem(selectDuration, "3", "3 Month");
-	AddMenuItem(selectDuration, "4", "4 Month");
-	AddMenuItem(selectDuration, "5", "5 Month");
-	AddMenuItem(selectDuration, "6", "6 Month");
-	AddMenuItem(selectDuration, "9", "9 Month");
-	AddMenuItem(selectDuration, "12", "12 Month");
+	AddMenuItem(selectDuration, "1", "1 Month (+Upgrade)");
+	AddMenuItem(selectDuration, "2", "2 Month (+Upgrade)");
+	AddMenuItem(selectDuration, "3", "3 Month (+Upgrade)");
+	AddMenuItem(selectDuration, "4", "4 Month (+Upgrade)");
+	AddMenuItem(selectDuration, "5", "5 Month (+Upgrade)");
+	AddMenuItem(selectDuration, "6", "6 Month (+Upgrade)");
+	AddMenuItem(selectDuration, "9", "9 Month (+Upgrade)");
+	AddMenuItem(selectDuration, "12", "12 Month (+Upgrade)");
 	g_iReason[client] = reason;
 	DisplayMenu(selectDuration, client, 60);
 }
@@ -369,7 +375,7 @@ public void grantVip(int admin, int client, int duration, int reason) {
 	
 	
 	char addVipQuery[4096];
-	Format(addVipQuery, sizeof(addVipQuery), "INSERT IGNORE INTO `tVip` (`Id`, `timestamp`, `playername`, `playerid`, `enddate`, `admin_playername`, `admin_playerid`) VALUES (NULL, CURRENT_TIMESTAMP, '%s', '%s', CURRENT_TIMESTAMP, '%s', '%s');", clean_playername, playerid, clean_admin_playername, admin_playerid);
+	Format(addVipQuery, sizeof(addVipQuery), "INSERT IGNORE INTO `tVip` (`Id`, `timestamp`, `playername`, `playerid`, `enddate`, `admin_playername`, `admin_playerid`, `vip_level`) VALUES (NULL, CURRENT_TIMESTAMP, '%s', '%s', CURRENT_TIMESTAMP, '%s', '%s', 0);", clean_playername, playerid, clean_admin_playername, admin_playerid);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, addVipQuery);
 	
 	char updateTime[1024];
@@ -379,9 +385,13 @@ public void grantVip(int admin, int client, int duration, int reason) {
 		Format(updateTime, sizeof(updateTime), "UPDATE tVip SET enddate = DATE_ADD(enddate, INTERVAL %i MINUTE) WHERE playerid = '%s';", duration, playerid);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateTime);
 	
+	char updateLevel[1024];
+	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET level MIN(level + 1, 3) WHERE playerid = '%s';", playerid);
+	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateLevel);
+	
 	CPrintToChat(admin, "{green}Added {orange}%s{green} as VIP for {orange}%i{green} %s", playername, duration, reason == 3 ? "Minutes":"Month");
 	CPrintToChat(client, "{green}You've been granted {orange}%i{green} %s of {orange}VIP{green} by {orange}%N", duration, reason == 3 ? "Minutes":"Month", admin);
-	setFlags(client);
+	loadVip(client);
 }
 
 public void grantVipEx(int admin, char playerid[20], int duration, char[] pname) {
@@ -402,17 +412,21 @@ public void grantVipEx(int admin, char playerid[20], int duration, char[] pname)
 	SQL_EscapeString(g_DB, admin_playername, clean_admin_playername, sizeof(clean_admin_playername));
 	
 	char addVipQuery[4096];
-	Format(addVipQuery, sizeof(addVipQuery), "INSERT IGNORE INTO `tVip` (`Id`, `timestamp`, `playername`, `playerid`, `enddate`, `admin_playername`, `admin_playerid`) VALUES (NULL, CURRENT_TIMESTAMP, '%s', '%s', CURRENT_TIMESTAMP, '%s', '%s');", pname, playerid, clean_admin_playername, admin_playerid);
+	Format(addVipQuery, sizeof(addVipQuery), "INSERT IGNORE INTO `tVip` (`Id`, `timestamp`, `playername`, `playerid`, `enddate`, `admin_playername`, `admin_playerid`, `vip_level`) VALUES (NULL, CURRENT_TIMESTAMP, '%s', '%s', CURRENT_TIMESTAMP, '%s', '%s', 0);", pname, playerid, clean_admin_playername, admin_playerid);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, addVipQuery);
 	
 	char updateTime[1024];
 	Format(updateTime, sizeof(updateTime), "UPDATE tVip SET enddate = DATE_ADD(enddate, INTERVAL %i MONTH) WHERE playerid = '%s';", duration, playerid);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateTime);
 	
+	char updateLevel[1024];
+	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET level MIN(level + 1, 3) WHERE playerid = '%s';", playerid);
+	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateLevel);
+	
 	if (admin != 0)
-		CPrintToChat(admin, "{green}Added {orange}%s{green} as VIP for {orange}%i{green} Month", playerid, duration);
+		CPrintToChat(admin, "{green}Added {orange}%s{green} as VIP for {orange}%i{green} Month and upgraded level by one if level < 3", playerid, duration);
 	else
-		PrintToServer("Added %s as VIP for %i Month", playerid, duration);
+		PrintToServer("Added %s as VIP for %i Month and upgraded level by one if level < 3", playerid, duration);
 }
 
 public void OnClientPostAdminCheck(int client) {
@@ -430,7 +444,7 @@ public void loadVip(int client) {
 	if (StrContains(playerid, "STEAM_") != -1)
 		strcopy(playerid, sizeof(playerid), playerid[8]);
 	char isVipQuery[1024];
-	Format(isVipQuery, sizeof(isVipQuery), "SELECT * FROM tVip WHERE playerid = '%s' AND enddate > NOW();", playerid);
+	Format(isVipQuery, sizeof(isVipQuery), "SELECT level FROM tVip WHERE playerid = '%s' AND enddate > NOW();", playerid);
 	
 	//Pass the userid to prevent assigning flags to a wrong client
 	SQL_TQuery(g_DB, SQLCheckVIPQuery, isVipQuery, GetClientUserId(client));
@@ -442,15 +456,16 @@ public void SQLCheckVIPQuery(Handle owner, Handle hndl, const char[] error, any 
 	//Check if the user is still ingame
 	if (isValidClient(client)) {
 		while (SQL_FetchRow(hndl)) {
-			setFlags(client);
+			int level = SQL_FetchInt(hndl, 0);
+			setFlags(client, level);
 		}
 	}
 }
 
-public void setFlags(int client) {
+public void setFlags(int client, int level) {
 	g_bIsVip[client] = true;
-	for (int i = 0; i < g_iFlagCount; i++)
-	SetUserFlagBits(client, GetUserFlagBits(client) | (1 << g_iFlags[i]));
+	for (int i = 0; i < level; i++)
+		SetUserFlagBits(client, GetUserFlagBits(client) | (1 << g_iFlags[i]));
 }
 
 public void OnRebuildAdminCache(AdminCachePart part) {
@@ -545,7 +560,11 @@ public void extendVip(int client, int userTarget, int duration) {
 	Format(updateQuery, sizeof(updateQuery), "UPDATE tVip SET playername = '%s' WHERE playerid = '%s';", clean_playername, playerid);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateQuery);
 	
-	CPrintToChat(client, "{green}Extended {orange}%s{green} VIP Status by {orange}%i{green} Month", playername, duration);
+	char updateLevel[1024];
+	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET level MIN(level + 1, 3) WHERE playerid = '%s';", playerid);
+	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateLevel);
+	
+	CPrintToChat(client, "{green}Extended {orange}%s{green} VIP Status by {orange}%i{green} Month and upgraded level by one if level < 3", playername, duration);
 }
 
 public void listUsers(int client) {
@@ -573,7 +592,7 @@ public int listVipsMenuHandler(Handle menu, MenuAction action, int client, int i
 		char cValue[20];
 		GetMenuItem(menu, item, cValue, sizeof(cValue));
 		char detailsQuery[512];
-		Format(detailsQuery, sizeof(detailsQuery), "SELECT playername,playerid,enddate,timestamp,admin_playername,admin_playerid FROM tVip WHERE playerid = '%s';", cValue);
+		Format(detailsQuery, sizeof(detailsQuery), "SELECT playername,playerid,enddate,timestamp,admin_playername,admin_playerid,level FROM tVip WHERE playerid = '%s';", cValue);
 		SQL_TQuery(g_DB, SQLDetailsQuery, detailsQuery, client);
 	}
 }
@@ -589,12 +608,14 @@ public void SQLDetailsQuery(Handle owner, Handle hndl, const char[] error, any d
 		char endDate[128];
 		char adminname[MAX_NAME_LENGTH + 8];
 		char adminplayerid[20];
+		int level;
 		SQL_FetchString(hndl, 0, playername, sizeof(playername));
 		SQL_FetchString(hndl, 1, playerid, sizeof(playerid));
 		SQL_FetchString(hndl, 2, endDate, sizeof(endDate));
 		SQL_FetchString(hndl, 3, startDate, sizeof(startDate));
 		SQL_FetchString(hndl, 4, adminname, sizeof(adminname));
 		SQL_FetchString(hndl, 5, adminplayerid, sizeof(adminplayerid));
+		level = SQL_FetchInt(hndl, 6);
 		
 		char title[64];
 		Format(title, sizeof(title), "Details: %s", playername);
@@ -607,6 +628,10 @@ public void SQLDetailsQuery(Handle owner, Handle hndl, const char[] error, any d
 		char endItem[64];
 		Format(endItem, sizeof(endItem), "Ends: %s", endDate);
 		AddMenuItem(detailsMenu, "x", endItem, ITEMDRAW_DISABLED);
+		
+		char levelItem[64];
+		Format(levelItem, sizeof(levelItem), "Level: %i", level);
+		AddMenuItem(detailsMenu, "x", levelItem, ITEMDRAW_DISABLED);
 		
 		char startItem[64];
 		Format(startItem, sizeof(startItem), "Started: %s", startDate);
