@@ -102,7 +102,7 @@ public Action openVipPanel(int client, int args) {
 			strcopy(playerid, sizeof(playerid), playerid[8]);
 		
 		char getDatesQuery[1024];
-		Format(getDatesQuery, sizeof(getDatesQuery), "SELECT timestamp,enddate,DATEDIFF(enddate, NOW()) as timeleft,level FROM tVip WHERE playerid = '%s';", playerid);
+		Format(getDatesQuery, sizeof(getDatesQuery), "SELECT timestamp,enddate,DATEDIFF(enddate, NOW()) as timeleft,vip_level FROM tVip WHERE playerid = '%s';", playerid);
 		
 		SQL_TQuery(g_DB, getDatesQueryCallback, getDatesQuery, client);
 	}
@@ -386,7 +386,7 @@ public void grantVip(int admin, int client, int duration, int reason) {
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateTime);
 	
 	char updateLevel[1024];
-	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET level = MIN(level + 1, 3) WHERE playerid = '%s';", playerid);
+	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET vip_level = MIN(vip_level + 1, 3) WHERE playerid = '%s';", playerid);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateLevel);
 	
 	CPrintToChat(admin, "{green}Added {orange}%s{green} as VIP for {orange}%i{green} %s", playername, duration, reason == 3 ? "Minutes":"Month");
@@ -420,11 +420,11 @@ public void grantVipEx(int admin, char playerid[20], int duration, char[] pname)
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateTime);
 	
 	char updateLevel[1024];
-	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET level = MIN(level + 1, 3) WHERE playerid = '%s';", playerid);
+	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET vip_level = MIN(vip_level + 1, 3) WHERE playerid = '%s';", playerid);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateLevel);
 	
 	if (admin != 0)
-		CPrintToChat(admin, "{green}Added {orange}%s{green} as VIP for {orange}%i{green} Month and upgraded level by one if level < 3", playerid, duration);
+		CPrintToChat(admin, "{green}Added {orange}%s{green} as VIP for {orange}%i{green} Month and upgraded vip_level by one if vip_level < 3", playerid, duration);
 	else
 		PrintToServer("Added %s as VIP for %i Month and upgraded level by one if level < 3", playerid, duration);
 }
@@ -444,7 +444,7 @@ public void loadVip(int client) {
 	if (StrContains(playerid, "STEAM_") != -1)
 		strcopy(playerid, sizeof(playerid), playerid[8]);
 	char isVipQuery[1024];
-	Format(isVipQuery, sizeof(isVipQuery), "SELECT level FROM tVip WHERE playerid = '%s' AND enddate > NOW();", playerid);
+	Format(isVipQuery, sizeof(isVipQuery), "SELECT vip_level FROM tVip WHERE playerid = '%s' AND enddate > NOW();", playerid);
 	
 	//Pass the userid to prevent assigning flags to a wrong client
 	SQL_TQuery(g_DB, SQLCheckVIPQuery, isVipQuery, GetClientUserId(client));
@@ -561,10 +561,10 @@ public void extendVip(int client, int userTarget, int duration) {
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateQuery);
 	
 	char updateLevel[1024];
-	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET level = MIN(level + 1, 3) WHERE playerid = '%s';", playerid);
+	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET vip_level = MIN(vip_level + 1, 3) WHERE playerid = '%s';", playerid);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateLevel);
 	
-	CPrintToChat(client, "{green}Extended {orange}%s{green} VIP Status by {orange}%i{green} Month and upgraded level by one if level < 3", playername, duration);
+	CPrintToChat(client, "{green}Extended {orange}%s{green} VIP Status by {orange}%i{green} Month and upgraded vip_level by one if vip_level < 3", playername, duration);
 }
 
 public void listUsers(int client) {
@@ -592,7 +592,7 @@ public int listVipsMenuHandler(Handle menu, MenuAction action, int client, int i
 		char cValue[20];
 		GetMenuItem(menu, item, cValue, sizeof(cValue));
 		char detailsQuery[512];
-		Format(detailsQuery, sizeof(detailsQuery), "SELECT playername,playerid,enddate,timestamp,admin_playername,admin_playerid,level FROM tVip WHERE playerid = '%s';", cValue);
+		Format(detailsQuery, sizeof(detailsQuery), "SELECT playername,playerid,enddate,timestamp,admin_playername,admin_playerid,vip_level FROM tVip WHERE playerid = '%s';", cValue);
 		SQL_TQuery(g_DB, SQLDetailsQuery, detailsQuery, client);
 	}
 }
