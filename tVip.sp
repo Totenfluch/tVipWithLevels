@@ -386,7 +386,7 @@ public void grantVip(int admin, int client, int duration, int reason) {
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateTime);
 	
 	char updateLevel[1024];
-	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET vip_level = MIN(vip_level + 1, 3) WHERE playerid = '%s';", playerid);
+	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET vip_level = IF((vip_level+1)>3, 3, (vip_level+1)) WHERE playerid = '%s';", playerid);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateLevel);
 	
 	CPrintToChat(admin, "{green}Added {orange}%s{green} as VIP for {orange}%i{green} %s", playername, duration, reason == 3 ? "Minutes":"Month");
@@ -420,7 +420,7 @@ public void grantVipEx(int admin, char playerid[20], int duration, char[] pname)
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateTime);
 	
 	char updateLevel[1024];
-	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET vip_level = MIN(vip_level + 1, 3) WHERE playerid = '%s';", playerid);
+	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET vip_level = IF((vip_level+1)>3, 3, (vip_level+1)) WHERE playerid = '%s';", playerid);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateLevel);
 	
 	if (admin != 0)
@@ -561,7 +561,7 @@ public void extendVip(int client, int userTarget, int duration) {
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateQuery);
 	
 	char updateLevel[1024];
-	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET vip_level = MIN(vip_level + 1, 3) WHERE playerid = '%s';", playerid);
+	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET vip_level = IF((vip_level+1)>3, 3, (vip_level+1)) WHERE playerid = '%s';", playerid);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateLevel);
 	
 	CPrintToChat(client, "{green}Extended {orange}%s{green} VIP Status by {orange}%i{green} Month and upgraded vip_level by one if vip_level < 3", playername, duration);
