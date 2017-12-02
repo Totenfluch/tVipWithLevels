@@ -26,6 +26,8 @@ Handle g_hFlag;
 int g_iFlags[20];
 int g_iFlagCount = 0;
 
+Handle g_hServerId;
+int g_iServerId;
 
 bool g_bIsVip[MAXPLAYERS + 1];
 
@@ -54,8 +56,18 @@ public void OnPluginStart() {
   		`admin_playername` varchar(36) COLLATE utf8_bin NOT NULL, \
   		`admin_playerid` varchar(20) COLLATE utf8_bin NOT NULL, \
   		`vip_level` INT NOT NULL, \
+  		`server_id` INT NOT NULL, \
  		 PRIMARY KEY (`Id`), \
-  		 UNIQUE KEY `playerid` (`playerid`)  \
+  		 UNIQUE KEY `playerid_server_id` (`playerid`, `server_id`)  \
+  		 ) ENGINE = InnoDB AUTO_INCREMENT=0 DEFAULT CHARSET=utf8 COLLATE=utf8_bin;"
+		);
+	SQL_TQuery(g_DB, SQLErrorCheckCallback, createTableQuery);
+	Format(createTableQuery, sizeof(createTableQuery), 
+		"CREATE TABLE IF NOT EXISTS `tVipServers` ( \
+ 		`server_id` INT NOT NULL AUTO_INCREMENT, \
+  		`server_comment` varchar(64) COLLATE utf8_bin NOT NULL, \
+  		`serverip_port` varchar(64) COLLATE utf8_bin NOT NULL, \
+ 		 PRIMARY KEY (`Id`), \
   		 ) ENGINE = InnoDB AUTO_INCREMENT=0 DEFAULT CHARSET=utf8 COLLATE=utf8_bin;"
 		);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, createTableQuery);
@@ -65,12 +77,13 @@ public void OnPluginStart() {
 	
 	g_hFlag = AutoExecConfig_CreateConVar("tVip_flag", "0 15 18", "0=A, 15=O, 18=R etc. Numeric Flag See: 'https://wiki.alliedmods.net/Checking_Admin_Flags_(SourceMod_Scripting)' for Definitions ---- Level 1: Number1, Level 2: Number2, Level3: Number3");
 	g_hTestVipDuration = AutoExecConfig_CreateConVar("tVip_testVipDuration", "15", "Test Vip duration in minutes");
+	g_hServerId = AutoExecConfig_CreateConVar("tVip_serverId", "-1", "Server ID (-1 for none)");
 	
 	AutoExecConfig_CleanFile();
 	AutoExecConfig_ExecuteFile();
 	
 	RegAdminCmd("sm_tvip", cmdtVIP, ADMFLAG_ROOT, "Opens the tVIP menu");
-	RegAdminCmd("sm_addvip", cmdAddVip, ADMFLAG_ROOT, "Adds a VIP Usage: sm_addvip \"<SteamID>\" <Duration in Month> \"<Name>\"");
+	RegAdminCmd("sm_addvip", cmdAddVip, ADMFLAG_ROOT, "Adds a VIP Usage: sm_addvip \"<SteamID>\" <Duration in Month> \"<Name>\" <Server Id>");
 	RegAdminCmd("sm_removevip", removeVip, ADMFLAG_ROOT, "Removes a VIP Usage: sm_removevip \"<SteamID>\"");
 	RegConsoleCmd("sm_vips", cmdListVips, "Shows all VIPs");
 	RegConsoleCmd("sm_vip", openVipPanel, "Opens the Vip Menu");
@@ -92,6 +105,7 @@ public void OnConfigsExecuted() {
 			break;
 		g_iFlags[g_iFlagCount++] = StringToInt(cSplinters[i]);
 	}
+	g_iServerId = GetConVarInt(g_hServerId);
 }
 
 public Action openVipPanel(int client, int args) {
@@ -102,7 +116,7 @@ public Action openVipPanel(int client, int args) {
 			strcopy(playerid, sizeof(playerid), playerid[8]);
 		
 		char getDatesQuery[1024];
-		Format(getDatesQuery, sizeof(getDatesQuery), "SELECT timestamp,enddate,DATEDIFF(enddate, NOW()) as timeleft,vip_level FROM tVip WHERE playerid = '%s';", playerid);
+		Format(getDatesQuery, sizeof(getDatesQuery), "SELECT timestamp,enddate,DATEDIFF(enddate, NOW()) as timeleft,vip_level FROM tVip WHERE playerid = '%s' AND server_id = '%i';", playerid, g_iServerId);
 		
 		SQL_TQuery(g_DB, getDatesQueryCallback, getDatesQuery, client);
 	}
@@ -173,9 +187,9 @@ public Action removeVip(int client, int args) {
 public Action cmdAddVip(int client, int args) {
 	if (args != 3) {
 		if (client != 0)
-			CPrintToChat(client, "{olive}[-T-] {lightred}Invalid Params Usage: sm_addvip \"<SteamID>\" <Duration in Month> \"<Name>\"");
+			CPrintToChat(client, "{olive}[-T-] {lightred}Invalid Params Usage: sm_addvip \"<SteamID>\" <Duration in Month> \"<Name>\" <ServerId>");
 		else
-			PrintToServer("[-T-] Invalid Params Usage: sm_addvip \"<SteamID>\" <Duration in Month> \"<Name>\"");
+			PrintToServer("[-T-] Invalid Params Usage: sm_addvip \"<SteamID>\" <Duration in Month> \"<Name>\" <ServerId>");
 		return Plugin_Handled;
 	}
 	
@@ -199,7 +213,11 @@ public Action cmdAddVip(int client, int args) {
 	char clean_name[MAX_NAME_LENGTH * 2 + 16];
 	SQL_EscapeString(g_DB, name, clean_name, sizeof(clean_name));
 	
-	grantVipEx(client, input2, d1, clean_name);
+	char serverId[8];
+	GetCmdArg(2, serverId, sizeof(serverId));
+	int iserverId = StringToInt(serverId);
+	
+	grantVipEx(client, input2, d1, clean_name, iserverId);
 	return Plugin_Handled;
 }
 
@@ -216,7 +234,7 @@ public Action cmdtVIP(int client, int args) {
 
 public Action cmdListVips(int client, int args) {
 	char showOffVIPQuery[1024];
-	Format(showOffVIPQuery, sizeof(showOffVIPQuery), "SELECT playername,playerid FROM tVip WHERE NOW() < enddate;");
+	Format(showOffVIPQuery, sizeof(showOffVIPQuery), "SELECT playername,playerid FROM tVip WHERE NOW() < enddate AND server_id = '%i';", g_iServerId);
 	SQL_TQuery(g_DB, SQLShowOffVipQuery, showOffVIPQuery, client);
 }
 
@@ -375,18 +393,18 @@ public void grantVip(int admin, int client, int duration, int reason) {
 	
 	
 	char addVipQuery[4096];
-	Format(addVipQuery, sizeof(addVipQuery), "INSERT IGNORE INTO `tVip` (`Id`, `timestamp`, `playername`, `playerid`, `enddate`, `admin_playername`, `admin_playerid`, `vip_level`) VALUES (NULL, CURRENT_TIMESTAMP, '%s', '%s', CURRENT_TIMESTAMP, '%s', '%s', 0);", clean_playername, playerid, clean_admin_playername, admin_playerid);
+	Format(addVipQuery, sizeof(addVipQuery), "INSERT IGNORE INTO `tVip` (`Id`, `timestamp`, `playername`, `playerid`, `enddate`, `admin_playername`, `admin_playerid`, `vip_level`) VALUES (NULL, CURRENT_TIMESTAMP, '%s', '%s', CURRENT_TIMESTAMP, '%s', '%s', 0, '%i');", clean_playername, playerid, clean_admin_playername, admin_playerid, g_iServerId);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, addVipQuery);
 	
 	char updateTime[1024];
 	if (reason != 3)
-		Format(updateTime, sizeof(updateTime), "UPDATE tVip SET enddate = DATE_ADD(enddate, INTERVAL %i MONTH) WHERE playerid = '%s';", duration, playerid);
+		Format(updateTime, sizeof(updateTime), "UPDATE tVip SET enddate = DATE_ADD(enddate, INTERVAL %i MONTH) WHERE playerid = '%s' AND server_id = '%i';", duration, playerid, g_iServerId);
 	else
-		Format(updateTime, sizeof(updateTime), "UPDATE tVip SET enddate = DATE_ADD(enddate, INTERVAL %i MINUTE) WHERE playerid = '%s';", duration, playerid);
+		Format(updateTime, sizeof(updateTime), "UPDATE tVip SET enddate = DATE_ADD(enddate, INTERVAL %i MINUTE) WHERE playerid = '%s' AND server_id = '%i';", duration, playerid, g_iServerId);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateTime);
 	
 	char updateLevel[1024];
-	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET vip_level = IF((vip_level+1)>3, 3, (vip_level+1)) WHERE playerid = '%s';", playerid);
+	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET vip_level = IF((vip_level+1)>3, 3, (vip_level+1)) WHERE playerid = '%s' AND server_id = '%i';", playerid, g_iServerId);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateLevel);
 	
 	CPrintToChat(admin, "{green}Added {orange}%s{green} as VIP for {orange}%i{green} %s", playername, duration, reason == 3 ? "Minutes":"Month");
@@ -394,7 +412,7 @@ public void grantVip(int admin, int client, int duration, int reason) {
 	loadVip(client);
 }
 
-public void grantVipEx(int admin, char playerid[20], int duration, char[] pname) {
+public void grantVipEx(int admin, char playerid[20], int duration, char[] pname, int serverId) {
 	char admin_playerid[20];
 	if (admin != 0) {
 		GetClientAuthId(admin, AuthId_Steam2, admin_playerid, sizeof(admin_playerid));
@@ -412,27 +430,27 @@ public void grantVipEx(int admin, char playerid[20], int duration, char[] pname)
 	SQL_EscapeString(g_DB, admin_playername, clean_admin_playername, sizeof(clean_admin_playername));
 	
 	char addVipQuery[4096];
-	Format(addVipQuery, sizeof(addVipQuery), "INSERT IGNORE INTO `tVip` (`Id`, `timestamp`, `playername`, `playerid`, `enddate`, `admin_playername`, `admin_playerid`, `vip_level`) VALUES (NULL, CURRENT_TIMESTAMP, '%s', '%s', CURRENT_TIMESTAMP, '%s', '%s', 0);", pname, playerid, clean_admin_playername, admin_playerid);
+	Format(addVipQuery, sizeof(addVipQuery), "INSERT IGNORE INTO `tVip` (`Id`, `timestamp`, `playername`, `playerid`, `enddate`, `admin_playername`, `admin_playerid`, `vip_level`, `server_id`) VALUES (NULL, CURRENT_TIMESTAMP, '%s', '%s', CURRENT_TIMESTAMP, '%s', '%s', 0, '%i');", pname, playerid, clean_admin_playername, admin_playerid, serverId);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, addVipQuery);
 	
 	char updateTime[1024];
-	Format(updateTime, sizeof(updateTime), "UPDATE tVip SET enddate = DATE_ADD(enddate, INTERVAL %i MONTH) WHERE playerid = '%s';", duration, playerid);
+	Format(updateTime, sizeof(updateTime), "UPDATE tVip SET enddate = DATE_ADD(enddate, INTERVAL %i MONTH) WHERE playerid = '%s' AND server_id = '%i';", duration, playerid, serverId);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateTime);
 	
 	char updateLevel[1024];
-	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET vip_level = IF((vip_level+1)>3, 3, (vip_level+1)) WHERE playerid = '%s';", playerid);
+	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET vip_level = IF((vip_level+1)>3, 3, (vip_level+1)) WHERE playerid = '%s' AND server_id = '%i';", playerid, serverId);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateLevel);
 	
 	if (admin != 0)
-		CPrintToChat(admin, "{green}Added {orange}%s{green} as VIP for {orange}%i{green} Month and upgraded vip_level by one if vip_level < 3", playerid, duration);
+		CPrintToChat(admin, "{green}Added {orange}%s{green} as VIP for {orange}%i{green} Month and upgraded vip_level by one if vip_level < 3 on Server %i", playerid, duration, serverId);
 	else
-		PrintToServer("Added %s as VIP for %i Month and upgraded level by one if level < 3", playerid, duration);
+		PrintToServer("Added %s as VIP for %i Month and upgraded level by one if level < 3 on Server %i", playerid, duration, serverId);
 }
 
 public void OnClientPostAdminCheck(int client) {
 	g_bIsVip[client] = false;
 	char cleanUp[256];
-	Format(cleanUp, sizeof(cleanUp), "DELETE FROM tVip WHERE enddate < NOW();");
+	Format(cleanUp, sizeof(cleanUp), "DELETE FROM tVip WHERE enddate < NOW() AND server_id = '%i';", g_iServerId);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, cleanUp);
 	
 	loadVip(client);
@@ -444,7 +462,7 @@ public void loadVip(int client) {
 	if (StrContains(playerid, "STEAM_") != -1)
 		strcopy(playerid, sizeof(playerid), playerid[8]);
 	char isVipQuery[1024];
-	Format(isVipQuery, sizeof(isVipQuery), "SELECT vip_level FROM tVip WHERE playerid = '%s' AND enddate > NOW();", playerid);
+	Format(isVipQuery, sizeof(isVipQuery), "SELECT vip_level FROM tVip WHERE playerid = '%s' AND enddate > NOW() AND server_id = '%i';", playerid, g_iServerId);
 	
 	//Pass the userid to prevent assigning flags to a wrong client
 	SQL_TQuery(g_DB, SQLCheckVIPQuery, isVipQuery, GetClientUserId(client));
@@ -465,7 +483,7 @@ public void SQLCheckVIPQuery(Handle owner, Handle hndl, const char[] error, any 
 public void setFlags(int client, int level) {
 	g_bIsVip[client] = true;
 	for (int i = 0; i < level; i++)
-		SetUserFlagBits(client, GetUserFlagBits(client) | (1 << g_iFlags[i]));
+	SetUserFlagBits(client, GetUserFlagBits(client) | (1 << g_iFlags[i]));
 }
 
 public void OnRebuildAdminCache(AdminCachePart part) {
@@ -483,7 +501,7 @@ public void reloadVIPs() {
 
 public void showAllVIPsToAdmin(int client) {
 	char selectAllVIPs[1024];
-	Format(selectAllVIPs, sizeof(selectAllVIPs), "SELECT playername,playerid FROM tVip WHERE NOW() < enddate;");
+	Format(selectAllVIPs, sizeof(selectAllVIPs), "SELECT playername,playerid FROM tVip WHERE NOW() < enddate AND server_id = '%i';", g_iServerId);
 	SQL_TQuery(g_DB, SQLListVIPsForRemoval, selectAllVIPs, client);
 }
 
@@ -515,7 +533,7 @@ public int menuToRemoveClientsHandler(Handle menu, MenuAction action, int client
 
 public void deleteVip(char[] playerid) {
 	char deleteVipQuery[512];
-	Format(deleteVipQuery, sizeof(deleteVipQuery), "DELETE FROM tVip WHERE playerid = '%s';", playerid);
+	Format(deleteVipQuery, sizeof(deleteVipQuery), "DELETE FROM tVip WHERE playerid = '%s' AND server_id = '%i';", playerid, g_iServerId);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, deleteVipQuery);
 }
 
@@ -554,29 +572,29 @@ public void extendVip(int client, int userTarget, int duration) {
 	SQL_EscapeString(g_DB, playername, clean_playername, sizeof(clean_playername));
 	
 	char updateQuery[1024];
-	Format(updateQuery, sizeof(updateQuery), "UPDATE tVip SET enddate = DATE_ADD(enddate, INTERVAL %i MONTH) WHERE playerid = '%s';", duration, playerid);
+	Format(updateQuery, sizeof(updateQuery), "UPDATE tVip SET enddate = DATE_ADD(enddate, INTERVAL %i MONTH) WHERE playerid = '%s' AND server_id = '%i';", duration, playerid, g_iServerId);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateQuery);
 	
-	Format(updateQuery, sizeof(updateQuery), "UPDATE tVip SET playername = '%s' WHERE playerid = '%s';", clean_playername, playerid);
+	Format(updateQuery, sizeof(updateQuery), "UPDATE tVip SET playername = '%s' WHERE playerid = '%s' AND server_id = '%i';", clean_playername, playerid, g_iServerId);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateQuery);
 	
 	char updateLevel[1024];
-	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET vip_level = IF((vip_level+1)>3, 3, (vip_level+1)) WHERE playerid = '%s';", playerid);
+	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET vip_level = IF((vip_level+1)>3, 3, (vip_level+1)) WHERE playerid = '%s' AND server_id = '%i';", playerid, g_iServerId);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateLevel);
 	
-	CPrintToChat(client, "{green}Extended {orange}%s{green} VIP Status by {orange}%i{green} Month and upgraded vip_level by one if vip_level < 3", playername, duration);
+	CPrintToChat(client, "{green}Extended {orange}%s{green} VIP Status by {orange}%i{green} Month and upgraded vip_level by one if vip_level < 3 AND server_id = '%i'", playername, duration, g_iServerId);
 }
 
 public void listUsers(int client) {
 	char listVipsQuery[1024];
-	Format(listVipsQuery, sizeof(listVipsQuery), "SELECT playername,playerid FROM tVip WHERE enddate > NOW();");
+	Format(listVipsQuery, sizeof(listVipsQuery), "SELECT playername,playerid FROM tVip WHERE enddate > NOW() AND server_id = '%i';", g_iServerId);
 	SQL_TQuery(g_DB, SQLListVIPsQuery, listVipsQuery, client);
 }
 
 public void SQLListVIPsQuery(Handle owner, Handle hndl, const char[] error, any data) {
 	int client = data;
 	Menu menuToRemoveClients = CreateMenu(listVipsMenuHandler);
-	SetMenuTitle(menuToRemoveClients, "All VIPs");
+	SetMenuTitle(menuToRemoveClients, "All VIPs on this Server");
 	while (SQL_FetchRow(hndl)) {
 		char playerid[20];
 		char playername[MAX_NAME_LENGTH + 8];
@@ -592,7 +610,7 @@ public int listVipsMenuHandler(Handle menu, MenuAction action, int client, int i
 		char cValue[20];
 		GetMenuItem(menu, item, cValue, sizeof(cValue));
 		char detailsQuery[512];
-		Format(detailsQuery, sizeof(detailsQuery), "SELECT playername,playerid,enddate,timestamp,admin_playername,admin_playerid,vip_level FROM tVip WHERE playerid = '%s';", cValue);
+		Format(detailsQuery, sizeof(detailsQuery), "SELECT playername,playerid,enddate,timestamp,admin_playername,admin_playerid,vip_level FROM tVip WHERE playerid = '%s' AND server_id = '%i';", cValue, g_iServerId);
 		SQL_TQuery(g_DB, SQLDetailsQuery, detailsQuery, client);
 	}
 }
