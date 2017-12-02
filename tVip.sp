@@ -83,7 +83,7 @@ public void OnPluginStart() {
 	AutoExecConfig_ExecuteFile();
 	
 	RegAdminCmd("sm_tvip", cmdtVIP, ADMFLAG_ROOT, "Opens the tVIP menu");
-	RegAdminCmd("sm_addvip", cmdAddVip, ADMFLAG_ROOT, "Adds a VIP Usage: sm_addvip \"<SteamID>\" <Duration in Month> \"<Name>\" <Server Id>");
+	RegAdminCmd("sm_addvip", cmdAddVip, ADMFLAG_ROOT, "Adds a VIP Usage: sm_addvip \"<SteamID>\" <Duration in Month> \"<Name>\"");
 	RegAdminCmd("sm_removevip", removeVip, ADMFLAG_ROOT, "Removes a VIP Usage: sm_removevip \"<SteamID>\"");
 	RegConsoleCmd("sm_vips", cmdListVips, "Shows all VIPs");
 	RegConsoleCmd("sm_vip", openVipPanel, "Opens the Vip Menu");
@@ -187,9 +187,9 @@ public Action removeVip(int client, int args) {
 public Action cmdAddVip(int client, int args) {
 	if (args != 3) {
 		if (client != 0)
-			CPrintToChat(client, "{olive}[-T-] {lightred}Invalid Params Usage: sm_addvip \"<SteamID>\" <Duration in Month> \"<Name>\" <ServerId>");
+			CPrintToChat(client, "{olive}[-T-] {lightred}Invalid Params Usage: sm_addvip \"<SteamID>\" <Duration in Month> \"<Name>\"");
 		else
-			PrintToServer("[-T-] Invalid Params Usage: sm_addvip \"<SteamID>\" <Duration in Month> \"<Name>\" <ServerId>");
+			PrintToServer("[-T-] Invalid Params Usage: sm_addvip \"<SteamID>\" <Duration in Month> \"<Name>\"");
 		return Plugin_Handled;
 	}
 	
@@ -213,11 +213,7 @@ public Action cmdAddVip(int client, int args) {
 	char clean_name[MAX_NAME_LENGTH * 2 + 16];
 	SQL_EscapeString(g_DB, name, clean_name, sizeof(clean_name));
 	
-	char serverId[8];
-	GetCmdArg(2, serverId, sizeof(serverId));
-	int iserverId = StringToInt(serverId);
-	
-	grantVipEx(client, input2, d1, clean_name, iserverId);
+	grantVipEx(client, input2, d1, clean_name);
 	return Plugin_Handled;
 }
 
@@ -412,7 +408,7 @@ public void grantVip(int admin, int client, int duration, int reason) {
 	loadVip(client);
 }
 
-public void grantVipEx(int admin, char playerid[20], int duration, char[] pname, int serverId) {
+public void grantVipEx(int admin, char playerid[20], int duration, char[] pname) {
 	char admin_playerid[20];
 	if (admin != 0) {
 		GetClientAuthId(admin, AuthId_Steam2, admin_playerid, sizeof(admin_playerid));
@@ -430,21 +426,21 @@ public void grantVipEx(int admin, char playerid[20], int duration, char[] pname,
 	SQL_EscapeString(g_DB, admin_playername, clean_admin_playername, sizeof(clean_admin_playername));
 	
 	char addVipQuery[4096];
-	Format(addVipQuery, sizeof(addVipQuery), "INSERT IGNORE INTO `tVip` (`Id`, `timestamp`, `playername`, `playerid`, `enddate`, `admin_playername`, `admin_playerid`, `vip_level`, `server_id`) VALUES (NULL, CURRENT_TIMESTAMP, '%s', '%s', CURRENT_TIMESTAMP, '%s', '%s', 0, '%i');", pname, playerid, clean_admin_playername, admin_playerid, serverId);
+	Format(addVipQuery, sizeof(addVipQuery), "INSERT IGNORE INTO `tVip` (`Id`, `timestamp`, `playername`, `playerid`, `enddate`, `admin_playername`, `admin_playerid`, `vip_level`, `server_id`) VALUES (NULL, CURRENT_TIMESTAMP, '%s', '%s', CURRENT_TIMESTAMP, '%s', '%s', 0, '%i');", pname, playerid, clean_admin_playername, admin_playerid, g_iServerId);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, addVipQuery);
 	
 	char updateTime[1024];
-	Format(updateTime, sizeof(updateTime), "UPDATE tVip SET enddate = DATE_ADD(enddate, INTERVAL %i MONTH) WHERE playerid = '%s' AND server_id = '%i';", duration, playerid, serverId);
+	Format(updateTime, sizeof(updateTime), "UPDATE tVip SET enddate = DATE_ADD(enddate, INTERVAL %i MONTH) WHERE playerid = '%s' AND server_id = '%i';", duration, playerid, g_iServerId);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateTime);
 	
 	char updateLevel[1024];
-	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET vip_level = IF((vip_level+1)>3, 3, (vip_level+1)) WHERE playerid = '%s' AND server_id = '%i';", playerid, serverId);
+	Format(updateLevel, sizeof(updateLevel), "UPDATE tVip SET vip_level = IF((vip_level+1)>3, 3, (vip_level+1)) WHERE playerid = '%s' AND server_id = '%i';", playerid, g_iServerId);
 	SQL_TQuery(g_DB, SQLErrorCheckCallback, updateLevel);
 	
 	if (admin != 0)
-		CPrintToChat(admin, "{green}Added {orange}%s{green} as VIP for {orange}%i{green} Month and upgraded vip_level by one if vip_level < 3 on Server %i", playerid, duration, serverId);
+		CPrintToChat(admin, "{green}Added {orange}%s{green} as VIP for {orange}%i{green} Month and upgraded vip_level by one if vip_level < 3 on Server %i", playerid, duration, g_iServerId);
 	else
-		PrintToServer("Added %s as VIP for %i Month and upgraded level by one if level < 3 on Server %i", playerid, duration, serverId);
+		PrintToServer("Added %s as VIP for %i Month and upgraded level by one if level < 3 on Server %i", playerid, duration, g_iServerId);
 }
 
 public void OnClientPostAdminCheck(int client) {
